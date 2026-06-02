@@ -1,0 +1,19 @@
+syntax = "proto3";
+
+package tb.grpctest.v1;
+
+import "tb/v1/resource.proto";
+
+message Test {
+  string name = 1;
+}
+
+service TestService {
+  rpc Destroy(DestroyRequest) returns (DestroyResponse);
+}
+
+message DestroyRequest {
+  tb.v1.Resource resource = 1;
+}
+
+message DestroyResponse {}

@@ -1,0 +1,19 @@
+{
+	"jsonapi": {
+		"version": "1.1"
+	},
+	"errors": [
+		{
+			"title": "Missing Required Field",
+			"detail": "This field is required",
+			"status": "400",
+			"code": "MISSING_FIELD",
+			"source": {
+				"pointer": "/data/attributes/name"
+			},
+			"meta": {
+				"field": "name"
+			}
+		}
+	]
+}

@@ -1,0 +1,146 @@
+# Mockery configuration for forge/go/kit
+# Generates mock implementations of interfaces for testing
+# Run: mockery --config .mockery.yaml
+
+dir: '{{.InterfaceDir}}/{{.SrcPackageName}}test'
+structname: '{{.InterfaceName}}'
+pkgname: '{{.SrcPackageName}}test'
+filename: '{{ .InterfaceName | snakecase }}_mock.go'
+template: testify
+template-data:
+  unroll-variadic: true
+
+packages:
+  # Application Layer - Use Cases
+  github.com/fromforgesoftware/go-kit/application/usecase:
+    interfaces:
+      Creator: {}
+      CreatorBatch: {}
+      Deleter: {}
+      Getter: {}
+      Lister: {}
+      Updater: {}
+
+  # Application Layer - Repository
+  github.com/fromforgesoftware/go-kit/application/repository:
+    interfaces:
+      Creator: {}
+      CreatorBatch: {}
+      Deleter: {}
+      Getter: {}
+      Lister: {}
+      Lock: {}
+      Patcher: {}
+      Updater: {}
+
+  # Authentication
+  github.com/fromforgesoftware/go-kit/auth:
+    interfaces:
+      ContextInjector: {}
+
+  github.com/fromforgesoftware/go-kit/auth/jwt:
+    interfaces:
+      Issuer: {}
+      IssuerValidator: {}
+      Validator: {}
+
+  github.com/fromforgesoftware/go-kit/auth/provider:
+    interfaces:
+      Provider: {}
+
+  # Errors
+  github.com/fromforgesoftware/go-kit/errors:
+    interfaces:
+      Detail: {}
+      Error: {}
+
+  # Filters
+  github.com/fromforgesoftware/go-kit/filter:
+    interfaces:
+      FieldFilter: {}
+
+  # Firebase
+  github.com/fromforgesoftware/go-kit/firebase:
+    interfaces:
+      User: {}
+      UserManagement: {}
+
+  # JSON:API
+  github.com/fromforgesoftware/go-kit/jsonapi:
+    interfaces:
+      Linkable: {}
+      ListResponse: {}
+      MarshalHook: {}
+      Metable: {}
+      Payloader: {}
+      RelationshipLinkable: {}
+      RelationshipMetable: {}
+      UnmarshalHook: {}
+
+  # Monitoring
+  github.com/fromforgesoftware/go-kit/monitoring:
+    interfaces:
+      Monitor:
+        config:
+          structname: MockMonitor
+
+  github.com/fromforgesoftware/go-kit/monitoring/logger:
+    interfaces:
+      Logger: {}
+
+  github.com/fromforgesoftware/go-kit/monitoring/tracer:
+    interfaces:
+      Tracer: {}
+      Span: {}
+
+  # Resource
+  github.com/fromforgesoftware/go-kit/resource:
+    interfaces:
+      ListResponse: {}
+
+  # Search
+  github.com/fromforgesoftware/go-kit/search:
+    interfaces:
+      Search: {}
+
+  github.com/fromforgesoftware/go-kit/search/query:
+    interfaces:
+      Cursor: {}
+      Query: {}
+
+  # Transport - AMQP
+  # Handler is intentionally omitted: it's a type alias for the
+  # generic messaging.Handler[T any], and mockery v3.6.0 emits broken
+  # code for generic interfaces accessed through aliases (drops the
+  # [T any] from the struct decl). The hand-checked-in mock at
+  # amqptest/handler_mock.go is the source of truth until mockery
+  # supports this case.
+  github.com/fromforgesoftware/go-kit/transport/amqp:
+    interfaces:
+      Connection: {}
+      Consumer: {}
+
+  # Transport - gRPC
+  github.com/fromforgesoftware/go-kit/transport/grpc:
+    interfaces:
+      Controller: {}
+      GRPCAuthenticator: {}
+      HandlerMiddleware: {}
+      Middleware: {}
+
+  # Transport - REST/HTTP
+  github.com/fromforgesoftware/go-kit/transport/rest:
+    interfaces:
+      Controller: {}
+      Endpoint: {}
+      Headerer: {}
+      HTTPAuthenticator: {}
+      Middleware: {}
+      StatusCoder: {}
+
+  # Transport - WebSocket
+  github.com/fromforgesoftware/go-kit/transport/websocket:
+    interfaces:
+      Client: {}
+      Service: {}
+      TokenProvider: {}

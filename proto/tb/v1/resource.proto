@@ -1,0 +1,18 @@
+syntax = "proto3";
+
+package tb.v1;
+
+import "google/protobuf/timestamp.proto";
+
+message Resource {
+  string id = 1;
+  google.protobuf.Timestamp created_at = 2;
+  google.protobuf.Timestamp updated_at = 3;
+  google.protobuf.Timestamp deleted_at = 4;
+  string type = 5;
+}
+
+message ResourceIdentifier {
+  string id = 1;
+  string type = 2;
+}

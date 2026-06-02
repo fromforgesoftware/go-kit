@@ -1,0 +1,57 @@
+syntax = "proto3";
+
+package tb.search.v1;
+
+message QueryOptions {
+  repeated Filter filters = 1;
+  Pagination pagination = 2;
+  repeated Sort sort = 3;
+  repeated string include = 4;
+  repeated FieldSet fields = 5;
+}
+
+message Filter {
+  string field = 1;
+  Operator operator = 2;
+  repeated string values = 3;
+}
+
+enum Operator {
+  OPERATOR_UNSPECIFIED = 0;
+  OPERATOR_EQ = 1;
+  OPERATOR_NEQ = 2;
+  OPERATOR_GT = 3;
+  OPERATOR_GTEQ = 4;
+  OPERATOR_LT = 5;
+  OPERATOR_LTEQ = 6;
+  OPERATOR_IN = 7;
+  OPERATOR_NOT_IN = 8;
+  OPERATOR_LIKE = 9;
+  OPERATOR_BETWEEN = 10;
+  OPERATOR_CONTAINS = 11;
+  OPERATOR_CONTAINS_LIKE = 12;
+  OPERATOR_IS_NULL = 13;
+  OPERATOR_NOT_NULL = 14;
+  OPERATOR_NOT_LIKE = 15;
+}
+
+message Pagination {
+  reserved 3;
+  reserved "cursor";
+
+  int32 limit = 1;
+  int32 offset = 2;
+  string before = 4;
+  string after = 5;
+  int32 size = 6;
+}
+
+message Sort {
+  string field = 1;
+  bool descending = 2;
+}
+
+message FieldSet {
+  string resource_type = 1;
+  repeated string names = 2;
+}

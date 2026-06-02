@@ -1,0 +1,170 @@
+{
+	"jsonapi": {
+		"version": "1.1"
+	},
+	"meta": {
+		"pagination": {
+			"totalCount": 2
+		}
+	},
+	"data": [
+		{
+			"type": "articles",
+			"id": "1",
+			"attributes": {
+				"info": {
+					"title": "\"title 1\"",
+					"recommendedReadTime": 9000000000000
+				},
+				"media": "website",
+				"marketDate": "2024-01-25",
+				"readAt": "01:31:01",
+				"tags": ["tag 1", "tag 2"],
+				"tagsByKeyword": {
+					"keyword 1": ["tag 1"],
+					"keyword 2": ["tag 2"]
+				},
+				"illustrations": [
+					{
+						"colours": ["#ffffff", "#000000"],
+						"createdAt": "2023-01-01"
+					}
+				],
+				"overallReadTime": 4440000000000,
+				"categoryMappings": {
+					"technology": "tech",
+					"science": "sci"
+				},
+				"timestamps": {
+					"createdAt": "2023-01-01T01:01:01.123Z",
+					"updatedAt": "2023-01-02T01:01:01.123Z"
+				}
+			},
+			"meta": {
+				"print": {
+					"numPages": 0,
+					"caption": "caption 1",
+					"date": "2023-01-25",
+					"tags": ["A4", "white", "double-sided"],
+					"constraints": {
+						"paperWeight": 2.1,
+						"paperWeightUnits": "g"
+					}
+				}
+			},
+			"relationships": {
+				"author": {
+					"data": {
+						"type": "authors",
+						"id": "author id 1"
+					}
+				},
+				"coauthors": {
+					"data": [
+						{
+							"type": "authors",
+							"id": "coauthor id 1001"
+						}
+					]
+				},
+				"publishers": {
+					"data": [
+						{
+							"type": "publishers",
+							"id": "publisher id 1"
+						},
+						{
+							"type": "publishers",
+							"id": "publisher id 10001"
+						}
+					]
+				},
+				"otherPublishers": {
+					"data": []
+				},
+				"subarticles": {
+					"data": []
+				}
+			}
+		},
+		{
+			"type": "articles",
+			"id": "2",
+			"attributes": {
+				"info": {
+					"title": "\"title 2\"",
+					"recommendedReadTime": 9000000000000
+				},
+				"media": "website",
+				"marketDate": "2024-01-26",
+				"readAt": "01:31:01",
+				"tags": ["tag 2", "tag 3"],
+				"tagsByKeyword": {
+					"keyword 2": ["tag 2"],
+					"keyword 3": ["tag 3"]
+				},
+				"illustrations": [
+					{
+						"colours": ["#ffffff", "#000000"],
+						"createdAt": "2023-01-01"
+					}
+				],
+				"overallReadTime": 4440000000000,
+				"categoryMappings": {
+					"technology": "tech",
+					"science": "sci"
+				},
+				"timestamps": {
+					"createdAt": "2023-01-02T01:01:01.123Z",
+					"updatedAt": "2023-01-03T01:01:01.123Z"
+				}
+			},
+			"meta": {
+				"print": {
+					"numPages": 100,
+					"caption": "caption 2",
+					"date": "2023-01-26",
+					"tags": ["A4", "white", "double-sided"],
+					"constraints": {
+						"paperWeight": 2.1,
+						"paperWeightUnits": "g"
+					}
+				}
+			},
+			"relationships": {
+				"author": {
+					"data": {
+						"type": "authors",
+						"id": "author id 2"
+					}
+				},
+				"coauthors": {
+					"data": [
+						{
+							"type": "authors",
+							"id": "coauthor id 2001"
+						}
+					]
+				},
+				"publishers": {
+					"data": [
+						{
+							"type": "publishers",
+							"id": "publisher id 2"
+						},
+						{
+							"type": "publishers",
+							"id": "publisher id 10002"
+						}
+					]
+				},
+				"otherPublishers": {
+					"data": []
+				},
+				"subarticles": {
+					"data": []
+				}
+			}
+		}
+	]
+}

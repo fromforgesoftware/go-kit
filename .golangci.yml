@@ -1,0 +1,67 @@
+# golangci-lint v2 config for go/kit.
+#
+# Strategy: enable the linters that catch real bugs (govet, staticcheck,
+# errcheck) and skip the style/refactor suggestions that the team doesn't
+# enforce (staticcheck's QF* "quick-fix" group: De Morgan's law,
+# could-merge-conditional-assignment, could-omit-embedded-field-from-selector).
+#
+# Test files get a relaxed ruleset — ignoring errors from defer Close(),
+# unused test helpers, and similar patterns is idiomatic in *_test.go.
+version: '2'
+
+run:
+  timeout: 5m
+
+linters:
+  default: none
+  enable:
+    - govet
+    - staticcheck
+    - errcheck
+    - ineffassign
+    - unused
+  settings:
+    staticcheck:
+      # Drop QF* (quick-fixes / style suggestions) and ST1005 (capitalised
+      # error strings — the jsonapi package keeps these for compat).
+      checks:
+        - 'all'
+        - '-QF1001'
+        - '-QF1007'
+        - '-QF1008'
+        - '-ST1005'
+        - '-S1011'
+        # ST1003 wants JsonApi → JSONAPI and Http → HTTP on exported
+        # identifiers. The kit has shipped these names for a long time
+        # and every trading-bot v2 service imports them; renaming is a
+        # major breaking change with no functional benefit. Disabled.
+        - '-ST1003'
+
+  exclusions:
+    paths:
+      # Vendored / generated trees we don't author.
+      - third_party$
+      - builtin$
+      - examples$
+    rules:
+      # Test files: relax errcheck + unused. Closing defers, ignored Write
+      # return values, and helper funcs that one suite uses are all noise
+      # in *_test.go.
+      - path: '_test\.go'
+        linters:
+          - errcheck
+          - unused
+      # Transport packages talk to net.Conn — SetDeadline / Close return
+      # errors we can't meaningfully recover from. Skipping errcheck in
+      # the whole tcp/udp/websocket subtree is the same pragmatism Go's
+      # stdlib applies (net/http does the same).
+      - path: 'transport/(tcp|udp|websocket)/'
+        linters:
+          - errcheck
+      # Test-helper packages (*test) and generated protobuf packages (*pb)
+      # don't need a Package doc comment — they're either internal
+      # scaffolding or machine-generated.
+      - path: '(test|pb)/'
+        text: 'ST1000'
+      - path: '_test\.go'
+        text: 'ST1000'

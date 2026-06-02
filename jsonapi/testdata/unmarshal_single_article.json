@@ -1,0 +1,61 @@
+{
+	"jsonapi": {
+		"version": "1.1"
+	},
+	"data": {
+		"id": "1",
+		"type": "articles",
+		"meta": {
+			"print": {
+				"caption": "caption 1",
+				"date": "2023-01-01",
+				"tags": ["A4", "white", "double-sided"]
+			}
+		},
+		"attributes": {
+			"info": {
+				"title": "title 1"
+			},
+			"marketDate": "2024-01-01",
+			"media": "website",
+			"readAt": "03:31:01",
+			"tags": ["tag 1", "tag 2"],
+			"tagsByKeyword": {
+				"keyword 1": ["tag 1"],
+				"keyword 2": ["tag 2"]
+			},
+			"timestamps": {
+				"createdAt": "2023-01-01T01:01:01.123Z",
+				"updatedAt": "2023-01-02T01:01:01.123Z"
+			}
+		},
+		"relationships": {
+			"author": {
+				"data": {
+					"id": "author id 1",
+					"type": "authors"
+				}
+			},
+			"coauthors": {
+				"data": [
+					{
+						"id": "coauthor id 1",
+						"type": "authors"
+					}
+				]
+			},
+			"publishers": {
+				"data": [
+					{
+						"id": "publisher id 1",
+						"type": "publishers"
+					},
+					{
+						"id": "publisher id 10000",
+						"type": "publishers"
+					}
+				]
+			}
+		}
+	}
+}
