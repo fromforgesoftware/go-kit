@@ -21,5 +21,5 @@ fi
 echo "→ tagging + releasing $V …"
 git tag -a "$V" -m "$V"
 git push origin "$V"
-gh release create "$V" -R "$REPO" --generate-notes --title "$V"
+gh release create "$V" -R "$REPO" --generate-notes --title "$V" --prerelease
 echo "✓ released $V — go get github.com/fromforgesoftware/go-kit@$V"
