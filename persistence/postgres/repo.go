@@ -206,7 +206,13 @@ func (r *Repo) filterApply(tx *gorm.DB, filters query.Filters[any], tableName st
 	if len(filters) < 1 {
 		return tx
 	}
-	sql, args := r.filterClauseAnd(filters, tableName)
+	sql, args, err := r.filterClauseAnd(filters, tableName)
+	if err != nil {
+		// Surface the error on the transaction instead of panicking so an
+		// unsupported operator fails the query rather than crashing the service.
+		_ = tx.AddError(err)
+		return tx
+	}
 	return tx.Where(sql, args...)
 }
 
@@ -220,7 +226,12 @@ func (r *Repo) orGroupsApply(tx *gorm.DB, groups []query.Filters[any], tableName
 		if len(g) == 0 {
 			continue
 		}
-		inner, innerArgs := r.filterClauseAnd(g, tableName)
+		inner, innerArgs, err := r.filterClauseAnd(g, tableName)
+		if err != nil {
+			// Surface the error on the transaction instead of panicking.
+			_ = tx.AddError(err)
+			return tx
+		}
 		parts = append(parts, "("+inner+")")
 		args = append(args, innerArgs...)
 	}
@@ -233,7 +244,7 @@ func (r *Repo) orGroupsApply(tx *gorm.DB, groups []query.Filters[any], tableName
 	return tx.Where("("+strings.Join(parts, " OR ")+")", args...)
 }
 
-func (r *Repo) filterClauseAnd(filters query.Filters[any], tableName string) (string, []any) {
+func (r *Repo) filterClauseAnd(filters query.Filters[any], tableName string) (string, []any, error) {
 	sqlQuery := strings.Builder{}
 	args := []any{}
 	keys := maps.Keys(filters)
@@ -252,11 +263,19 @@ func (r *Repo) filterClauseAnd(filters query.Filters[any], tableName string) (st
 			if filt.Value() == nil {
 				fmt.Fprintf(&sqlQuery, "%s %s NULL", colName, filt.Operator().String())
 			} else {
-				sqlQuery.WriteString(simpleArg(colName, filt.Operator()))
+				arg, err := simpleArg(colName, filt.Operator())
+				if err != nil {
+					return "", nil, err
+				}
+				sqlQuery.WriteString(arg)
 				args = append(args, filt.Value())
 			}
 		case filter.OpLike, filter.OpNotLike:
-			sqlQuery.WriteString(simpleArg(colName, filt.Operator()))
+			arg, err := simpleArg(colName, filt.Operator())
+			if err != nil {
+				return "", nil, err
+			}
+			sqlQuery.WriteString(arg)
 			args = append(args, fmt.Sprintf("%%%v%%", filt.Value()))
 		case filter.OpIn, filter.OpNotIn, filter.OpContainsLike:
 			vals, ok := filt.Value().([]string)
@@ -270,10 +289,18 @@ func (r *Repo) filterClauseAnd(filters query.Filters[any], tableName string) (st
 					vals = output
 				}
 			}
-			sqlQuery.WriteString(sliceArg(filt.Operator(), colName, vals))
+			arg, err := sliceArg(filt.Operator(), colName, vals)
+			if err != nil {
+				return "", nil, err
+			}
+			sqlQuery.WriteString(arg)
 			args = append(args, slicesx.Map(vals, func(s string) any { return s })...)
 		case filter.OpContains:
-			sqlQuery.WriteString(simpleArg(colName, filt.Operator()))
+			arg, err := simpleArg(colName, filt.Operator())
+			if err != nil {
+				return "", nil, err
+			}
+			sqlQuery.WriteString(arg)
 			if kind := reflect.ValueOf(filt.Value()).Kind(); kind == reflect.Slice || kind == reflect.Array {
 				args = append(args, pq.Array(filt.Value()))
 			} else {
@@ -284,7 +311,11 @@ func (r *Repo) filterClauseAnd(filters query.Filters[any], tableName string) (st
 			fmt.Fprintf(&sqlQuery, "%s %s ? AND ?", colName, filt.Operator())
 			args = append(args, vals...)
 		default:
-			sqlQuery.WriteString(simpleArg(colName, filt.Operator()))
+			arg, err := simpleArg(colName, filt.Operator())
+			if err != nil {
+				return "", nil, err
+			}
+			sqlQuery.WriteString(arg)
 			if kind := reflect.ValueOf(filt.Value()).Kind(); kind == reflect.Slice || kind == reflect.Array {
 				args = append(args, pq.Array(filt.Value()))
 			} else {
@@ -295,7 +326,7 @@ func (r *Repo) filterClauseAnd(filters query.Filters[any], tableName string) (st
 			sqlQuery.WriteString(" AND ")
 		}
 	}
-	return sqlQuery.String(), args
+	return sqlQuery.String(), args, nil
 }
 
 func (r *Repo) sortingApply(tx *gorm.DB, sorting *query.SortingParams) *gorm.DB {
@@ -370,48 +401,64 @@ func (r *Repo) fieldsApply(tx *gorm.DB, fields query.SparseFieldsets, tableName,
 // Helpers: Usage
 // -----------------------------------------------------------------------------
 
-func filterOp(op filter.Operator) string {
+// errUnsupportedOperator builds the error returned when a filter carries an
+// operator the SQL builder does not understand. It is surfaced on the gorm
+// transaction (via tx.AddError) rather than panicking, so an unsupported
+// operator arriving at runtime fails the query instead of crashing the service.
+func errUnsupportedOperator(op filter.Operator) error {
+	return apierrors.InternalError(fmt.Sprintf("operator %s is not supported", op))
+}
+
+func filterOp(op filter.Operator) (string, error) {
 	switch op {
 	case filter.OpEq:
-		return "="
+		return "=", nil
 	case filter.OpNEq:
-		return "<>"
+		return "<>", nil
 	case filter.OpGT:
-		return ">"
+		return ">", nil
 	case filter.OpGTEq:
-		return ">="
+		return ">=", nil
 	case filter.OpLT:
-		return "<"
+		return "<", nil
 	case filter.OpLTEq:
-		return "<="
+		return "<=", nil
 	case filter.OpIn:
-		return "IN"
+		return "IN", nil
 	case filter.OpNotIn:
-		return "NOT IN"
+		return "NOT IN", nil
 	case filter.OpLike:
-		return "LIKE"
+		return "LIKE", nil
 	case filter.OpNotLike:
-		return "NOT LIKE"
+		return "NOT LIKE", nil
 	case filter.OpContainsLike:
-		return "LIKE ANY"
+		return "LIKE ANY", nil
 	case filter.OpBetween:
-		return "BETWEEN"
+		return "BETWEEN", nil
 	case filter.OpContains:
-		return "@>"
+		return "@>", nil
 	case filter.OpIsNull:
-		return "IS"
+		return "IS", nil
 	case filter.OpNotNull:
-		return "IS NOT"
+		return "IS NOT", nil
 	default:
-		panic(apierrors.InternalError(fmt.Sprintf("operator %s is not supported", op)))
+		return "", errUnsupportedOperator(op)
 	}
 }
 
-func simpleArg(colName string, operator filter.Operator) string {
-	return fmt.Sprintf("%s %s ?", colName, filterOp(operator))
+func simpleArg(colName string, operator filter.Operator) (string, error) {
+	op, err := filterOp(operator)
+	if err != nil {
+		return "", err
+	}
+	return fmt.Sprintf("%s %s ?", colName, op), nil
 }
 
-func sliceArg(operator filter.Operator, colName string, vals []string) string {
+func sliceArg(operator filter.Operator, colName string, vals []string) (string, error) {
+	op, err := filterOp(operator)
+	if err != nil {
+		return "", err
+	}
 	subquery := strings.Builder{}
 	if operator == filter.OpContainsLike {
 		for i := 0; i < len(vals); i++ {
@@ -423,9 +470,9 @@ func sliceArg(operator filter.Operator, colName string, vals []string) string {
 		return fmt.Sprintf(
 			"EXISTS(SELECT FROM unnest(%s) cl_alias WHERE cl_alias %s(ARRAY[%s]))",
 			colName,
-			filterOp(operator),
+			op,
 			subquery.String(),
-		)
+		), nil
 	}
 	for i := 0; i < len(vals); i++ {
 		subquery.WriteString("?")
@@ -437,9 +484,9 @@ func sliceArg(operator filter.Operator, colName string, vals []string) string {
 	return fmt.Sprintf(
 		"%s %s (%s)",
 		colName,
-		filterOp(operator),
+		op,
 		subquery.String(),
-	)
+	), nil
 }
 
 func btwArgs(a any) []any {

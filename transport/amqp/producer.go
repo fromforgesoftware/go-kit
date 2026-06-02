@@ -252,8 +252,12 @@ func ProducerWithTimeout(timeout time.Duration) ProducerOption {
 	}
 }
 
-// PorducerWithTimeout is deprecated: use ProducerWithTimeout. Kept to
-// avoid breaking existing callers; remove in a follow-up release.
+// PorducerWithTimeout is a misspelled alias retained for backward
+// compatibility.
+//
+// Deprecated: use ProducerWithTimeout. This typo shipped at v0.1.0; kept as a
+// thin alias to avoid breaking existing callers and will be removed in a future
+// major release.
 func PorducerWithTimeout(timeout time.Duration) ProducerOption {
 	return ProducerWithTimeout(timeout)
 }

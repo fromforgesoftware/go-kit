@@ -16,10 +16,16 @@
 package idgen
 
 import (
+	"errors"
 	"fmt"
 	"sync"
 	"time"
 )
+
+// ErrClockBackward is returned by NextIDErr when the system clock has moved
+// backward relative to the last observed timestamp. Generating an ID in this
+// situation could yield duplicate IDs, so the generator refuses instead.
+var ErrClockBackward = errors.New("idgen: clock moved backward, refusing to generate ID")
 
 const (
 	// Bit allocations
@@ -43,6 +49,11 @@ type Generator struct {
 	sequence int64
 	lastTime int64
 	mu       sync.Mutex
+
+	// nowFn returns the current time in milliseconds since epoch. It exists
+	// as a field so tests can simulate clock movement; production code always
+	// uses time.Now().UnixMilli.
+	nowFn func() int64
 }
 
 // NewGenerator creates a new ID generator for the specified region.
@@ -56,20 +67,26 @@ func NewGenerator(regionID int64) *Generator {
 		regionID: regionID,
 		sequence: 0,
 		lastTime: 0,
+		nowFn:    func() int64 { return time.Now().UnixMilli() },
 	}
 }
 
-// NextID generates the next unique ID.
-// It panics if the system clock moves backward, as this could cause duplicate IDs.
-func (g *Generator) NextID() int64 {
+// NextIDErr generates the next unique ID.
+//
+// It returns ErrClockBackward if the system clock has moved backward relative
+// to the last observed timestamp, as continuing could produce duplicate IDs.
+// This is the error-returning counterpart of NextID and is the preferred entry
+// point for callers that can handle a transient clock anomaly at runtime
+// instead of crashing the process.
+func (g *Generator) NextIDErr() (int64, error) {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 
-	now := time.Now().UnixMilli()
+	now := g.now()
 
 	// Clock moved backward check
 	if now < g.lastTime {
-		panic(fmt.Sprintf("clock moved backward: refusing to generate ID (last=%d, now=%d)", g.lastTime, now))
+		return 0, fmt.Errorf("%w (last=%d, now=%d)", ErrClockBackward, g.lastTime, now)
 	}
 
 	if now == g.lastTime {
@@ -78,7 +95,7 @@ func (g *Generator) NextID() int64 {
 		if g.sequence > maxSequence {
 			// Sequence overflow, wait for next millisecond
 			for now <= g.lastTime {
-				now = time.Now().UnixMilli()
+				now = g.now()
 			}
 			g.sequence = 0
 		}
@@ -91,7 +108,31 @@ func (g *Generator) NextID() int64 {
 
 	// Pack into 64 bits: [timestamp][regionID][sequence]
 	id := (now << timestampShift) | (g.regionID << regionShift) | g.sequence
+	return id, nil
+}
+
+// NextID generates the next unique ID.
+//
+// Deprecated: NextID panics if the system clock moves backward, which can crash
+// a service at runtime. Use NextIDErr instead, which returns ErrClockBackward
+// so the caller can decide how to handle the anomaly. NextID is retained for
+// backward compatibility and will be removed in a future major release.
+func (g *Generator) NextID() int64 {
+	id, err := g.NextIDErr()
+	if err != nil {
+		panic(err.Error())
+	}
 	return id
+}
+
+// now returns the current time in milliseconds. It falls back to time.Now for
+// generators constructed without NewGenerator (e.g. a zero-value Generator),
+// preserving behaviour for any such existing callers.
+func (g *Generator) now() int64 {
+	if g.nowFn != nil {
+		return g.nowFn()
+	}
+	return time.Now().UnixMilli()
 }
 
 // RegionID returns the region ID this generator was created with.
