@@ -25,9 +25,10 @@ jobs:
           name: coverage
           path: coverage.out
           if-no-files-found: ignore
-      - uses: golangci/golangci-lint-action@v6
+      - uses: golangci/golangci-lint-action@v7
         with:
-          version: latest
+          version: v2.1.1
+          install-mode: goinstall
 
   integration:
     runs-on: ubuntu-latest
