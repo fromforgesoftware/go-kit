@@ -214,6 +214,16 @@ func (s *Server) Start() error {
 	return nil
 }
 
+// LocalAddr returns the address the server is bound to, or nil if it has not
+// been started yet. Essential when binding to ":0" (ephemeral port): callers
+// can log the chosen port, and tests/clients can dial back.
+func (s *Server) LocalAddr() net.Addr {
+	if s.conn == nil {
+		return nil
+	}
+	return s.conn.LocalAddr()
+}
+
 // Stop stops the server
 func (s *Server) Stop() error {
 	if s.cancel != nil {
@@ -255,12 +265,11 @@ func (s *Server) readLoop() {
 				}
 			}
 
-			// Copy data to avoid buffer overwrite
-			data := make([]byte, n)
-			copy(data, buf[:n])
-
-			// Decode Packet
-			pkt, err := Unmarshal(data)
+			// Decode straight from the read buffer. Unmarshal copies the
+			// payload into its own slice, so reusing buf on the next read is
+			// safe — no need for an extra full-datagram copy here (that was a
+			// redundant alloc on every inbound packet).
+			pkt, err := Unmarshal(buf[:n])
 			if err != nil {
 				// Malformed packet
 				continue
@@ -272,7 +281,9 @@ func (s *Server) readLoop() {
 				continue
 			}
 
-			// Process Reliability (Update ACKs, etc)
+			// Process Reliability (Update ACKs, etc). A non-nil return means
+			// "do not deliver" — e.g. a duplicate reliable retransmit, which
+			// ProcessPacket has already re-ACKed. Skip delivery silently.
 			if err := sess.ProcessPacket(pkt); err != nil {
 				continue
 			}
@@ -366,7 +377,9 @@ func (s *Server) getSession(addr *net.UDPAddr) *session {
 }
 
 func (s *Server) writeTo(data []byte, addr *net.UDPAddr) error {
-	s.monitor.Logger().Debug("UDP Write", "dest", addr.String(), "len", len(data))
+	// No per-write logging: writeTo is on the hot path (every outbound packet,
+	// including every ACK), and a Debug log here evaluates addr.String() and
+	// builds key/value args on every call even when Debug is filtered out.
 	_, err := s.conn.WriteToUDP(data, addr)
 	return err
 }

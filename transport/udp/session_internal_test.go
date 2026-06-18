@@ -65,6 +65,31 @@ func TestSessionSequenceWrapAround(t *testing.T) {
 	assert.Equal(t, uint16(3), got, "stale post-wrap seq must not regress lastAckRecv")
 }
 
+func TestSessionDedupsReliableRetransmit(t *testing.T) {
+	srv := newTestServer(t)
+	sess := newSession(srv.ctx, srv, &net.UDPAddr{IP: net.ParseIP("127.0.0.1"), Port: 9999})
+	defer sess.Close()
+
+	pkt := Packet{Type: PacketTypeReliable, Seq: 7, Payload: []byte("attack")}
+
+	// First delivery is accepted.
+	require.NoError(t, sess.ProcessPacket(pkt))
+	// A retransmit of the same seq must be reported as a duplicate so the read
+	// loop skips re-delivery (otherwise the action fires twice).
+	err := sess.ProcessPacket(pkt)
+	require.ErrorIs(t, err, errDuplicateReliable)
+	// And again — still a duplicate, not re-delivered.
+	require.ErrorIs(t, sess.ProcessPacket(pkt), errDuplicateReliable)
+
+	// A different seq sharing the same ring slot (7 + seqRecvBufSize) is NOT a
+	// duplicate — it overwrites the slot and is delivered.
+	require.NoError(t, sess.ProcessPacket(Packet{Type: PacketTypeReliable, Seq: 7 + seqRecvBufSize, Payload: []byte("x")}))
+
+	// Unreliable packets are never de-duped (no seq tracking).
+	require.NoError(t, sess.ProcessPacket(Packet{Type: PacketTypeUnreliable, Seq: 0, Payload: []byte("move")}))
+	require.NoError(t, sess.ProcessPacket(Packet{Type: PacketTypeUnreliable, Seq: 0, Payload: []byte("move")}))
+}
+
 func TestSessionHandleAckRemovesPendingByExactSeq(t *testing.T) {
 	srv := newTestServer(t)
 	sess := newSession(srv.ctx, srv, &net.UDPAddr{IP: net.ParseIP("127.0.0.1"), Port: 9999})

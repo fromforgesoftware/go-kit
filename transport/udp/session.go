@@ -2,6 +2,7 @@ package udp
 
 import (
 	"context"
+	"errors"
 	"net"
 	"sync"
 	"sync/atomic"
@@ -23,7 +24,24 @@ const (
 	// to keep slow-handler memory blow-up local to one session rather than
 	// the whole server.
 	sessionInboundBuf = 64
+
+	// seqRecvBufSize is the sliding-window size for reliable-packet
+	// de-duplication. A retransmit (the sender resends when our ACK is slow,
+	// e.g. RTT > ResendTimeout) must be ACKed again but delivered to the
+	// handler at most once — otherwise a single action could fire twice. The
+	// window comfortably exceeds the number of in-flight reliables a sender
+	// can produce before MaxRetries gives up (~ResendTimeout × MaxRetries).
+	seqRecvBufSize = 1024
+	// seqPresent marks a populated recvSeqBuf slot. Reliable Seq is uint16 and
+	// CAN be 0 after a 65535→0 wrap, so 0 cannot mean "empty"; we OR in this
+	// high bit and store seqPresent|seq.
+	seqPresent uint32 = 1 << 16
 )
+
+// errDuplicateReliable is returned by ProcessPacket when a reliable packet has
+// already been delivered (a retransmit). The read loop treats it as "ACK sent,
+// skip delivery" — it is control flow, not a failure.
+var errDuplicateReliable = errors.New("udp: duplicate reliable packet")
 
 // Session represents a connection-like state over UDP
 type Session interface {
@@ -68,6 +86,11 @@ type session struct {
 	// server's reaper. Atomic so the reaper doesn't have to take mu.
 	lastSeenNano atomic.Int64
 
+	// recvSeqBuf is the reliable-packet de-dup sliding window, indexed by
+	// seq % seqRecvBufSize and holding seqPresent|seq for the last seen seq
+	// at that slot. Guarded by mu.
+	recvSeqBuf []uint32
+
 	// inbound feeds the per-session dispatch worker. Bounded so a slow
 	// handler can't allocate unbounded goroutines for the same session,
 	// and per-session ordering is preserved (the old code spawned a fresh
@@ -95,6 +118,7 @@ func newSession(ctx context.Context, server *Server, addr *net.UDPAddr) *session
 		cancel:     cancel,
 		nextSeq:    1, // Start at 1
 		pending:    make(map[uint16]*pendingPacket),
+		recvSeqBuf: make([]uint32, seqRecvBufSize),
 		inbound:    make(chan []byte, sessionInboundBuf),
 	}
 	s.lastSeenNano.Store(time.Now().UnixNano())
@@ -204,8 +228,20 @@ func (s *session) ProcessPacket(p Packet) error {
 		if int16(p.Seq-s.lastAckRecv) > 0 {
 			s.lastAckRecv = p.Seq
 		}
-		// Send immediate ACK
+		// Always ACK — even a duplicate, since the sender is retransmitting
+		// precisely because it never saw our earlier ACK.
 		s.sendAck(p.Seq)
+
+		// De-dup: deliver each reliable seq to the handler at most once. A
+		// retransmit (RTT > ResendTimeout) arrives with the same seq; without
+		// this guard it would be dispatched again and an action could fire
+		// twice. The read loop skips delivery on a non-nil return.
+		slot := p.Seq % seqRecvBufSize
+		stamp := seqPresent | uint32(p.Seq)
+		if s.recvSeqBuf[slot] == stamp {
+			return errDuplicateReliable
+		}
+		s.recvSeqBuf[slot] = stamp
 	}
 
 	return nil

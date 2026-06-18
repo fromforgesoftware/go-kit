@@ -121,8 +121,7 @@ func BenchmarkServerSessionEchoParallel(b *testing.B) {
 	require.NoError(b, err)
 	defer server.Stop()
 
-	// Note: Server address extraction would need to be exposed to get real address
-	serverAddr := "127.0.0.1:0"
+	serverAddr := server.LocalAddr().String()
 
 	b.ResetTimer()
 	b.ReportAllocs()
