@@ -13,9 +13,10 @@ import (
 	"github.com/fromforgesoftware/go-kit/auth"
 )
 
-type FxConfig struct {
-	HTTPAddress string `required:"true" envconfig:"HTTP_ADDRESS"`
-}
+// The listen address comes from REST_ADDRESS via withAddrFromEnv (defaulting to
+// :8080 when unset) — see server.go. There is intentionally no env-config
+// struct here; an earlier `FxConfig{HTTPAddress envconfig:"HTTP_ADDRESS"}` was
+// dead code (never read) and falsely implied HTTP_ADDRESS was the knob.
 
 const defaultShutdownTimeout = 5 * time.Second
 

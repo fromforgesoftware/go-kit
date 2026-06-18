@@ -177,8 +177,18 @@ func WithAddress(address string) serverOption {
 	}
 }
 
+// defaultRESTAddress is used when REST_ADDRESS is unset. Without a default an
+// empty address means net.Listen("tcp", "") — a system-chosen RANDOM port,
+// which silently breaks k8s liveness/readiness probes (they target a fixed
+// port). A deterministic default is far safer; set REST_ADDRESS to override.
+const defaultRESTAddress = ":8080"
+
 func withAddrFromEnv() serverOption {
-	return WithAddress(os.Getenv("REST_ADDRESS"))
+	addr := os.Getenv("REST_ADDRESS")
+	if addr == "" {
+		addr = defaultRESTAddress
+	}
+	return WithAddress(addr)
 }
 
 // WithShutdownTimeout sets the shutdown deadline

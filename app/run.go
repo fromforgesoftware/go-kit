@@ -110,6 +110,15 @@ func buildApp(opts []Option) *fx.App {
 func buildAppFromConfig(cfg *config) *fx.App {
 	mods := make([]fx.Option, 0, len(cfg.userOptions)+4)
 
+	// Propagate WithName -> SVC_NAME. The monitoring logger and tracer modules
+	// read SVC_NAME from the env (required, no default) and panic at boot if
+	// it's missing — so a service that set app.WithName but not the SVC_NAME
+	// env var would crash. Default it from the configured name here; an
+	// explicit SVC_NAME env var still wins.
+	if cfg.name != "" && os.Getenv("SVC_NAME") == "" {
+		_ = os.Setenv("SVC_NAME", cfg.name)
+	}
+
 	mods = append(mods, fx.Supply(Info{Name: cfg.name, Version: cfg.version}))
 
 	if !cfg.withoutTele {
