@@ -11,6 +11,11 @@ template-data:
   unroll-variadic: true
 
 packages:
+  # Audit
+  github.com/fromforgesoftware/go-kit/audit:
+    interfaces:
+      Sink: {}
+
   # Application Layer - Use Cases
   github.com/fromforgesoftware/go-kit/application/usecase:
     interfaces:

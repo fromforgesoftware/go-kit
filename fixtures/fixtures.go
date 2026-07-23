@@ -18,8 +18,10 @@ var filenamePattern = regexp.MustCompile(`^(\d+)_.*\.sql$`)
 
 // loader handles loading SQL fixtures into a database.
 type loader struct {
-	db     *sqldb.DBClient
-	logger logger.Logger
+	db         *sqldb.DBClient
+	logger     logger.Logger
+	rewrites   [][2]string
+	searchPath string
 }
 
 // option configures a loader.
@@ -29,6 +31,24 @@ type option func(*loader)
 func WithLogger(log logger.Logger) option {
 	return func(l *loader) {
 		l.logger = log
+	}
+}
+
+// WithRewrite replaces old with new in every fixture file before execution —
+// e.g. retargeting a placeholder tenant UUID authored into demo SQL to the
+// real org id resolved at load time.
+func WithRewrite(old, new string) option {
+	return func(l *loader) {
+		l.rewrites = append(l.rewrites, [2]string{old, new})
+	}
+}
+
+// WithSearchPath overrides the connection's search_path, so one process can
+// load several schemas in turn. Only honored by the env-driven Load — a
+// loader built with New runs on the connection it was given.
+func WithSearchPath(schema string) option {
+	return func(l *loader) {
+		l.searchPath = schema
 	}
 }
 
@@ -91,7 +111,12 @@ func (l *loader) Load(ctx context.Context, fixturesFS fs.FS) error {
 				return fmt.Errorf("failed to read %s: %w", filename, err)
 			}
 
-			if _, err := tx.ExecContext(ctx, string(content)); err != nil {
+			statement := string(content)
+			for _, r := range l.rewrites {
+				statement = strings.ReplaceAll(statement, r[0], r[1])
+			}
+
+			if _, err := tx.ExecContext(ctx, statement); err != nil {
 				return fmt.Errorf("failed to execute %s: %w", filename, err)
 			}
 
@@ -104,9 +129,20 @@ func (l *loader) Load(ctx context.Context, fixturesFS fs.FS) error {
 }
 
 // Load is a convenience function that creates DB from environment and loads fixtures.
-func Load(ctx context.Context, fixturesFS fs.FS) error {
+func Load(ctx context.Context, fixturesFS fs.FS, opts ...option) error {
+	// Apply the options once up front: the connection ones (WithSearchPath)
+	// feed the DSN, the rest are handed on to the loader.
+	cfg := &loader{}
+	for _, opt := range opts {
+		opt(cfg)
+	}
+
 	// Create DB from environment variables
-	dsn, err := sqldb.NewDSN(sqldb.DriverTypePostgres)
+	var dsnOpts []sqldb.ConnectionDSNOption
+	if cfg.searchPath != "" {
+		dsnOpts = append(dsnOpts, sqldb.WithConnSearchPath(cfg.searchPath))
+	}
+	dsn, err := sqldb.NewDSN(sqldb.DriverTypePostgres, dsnOpts...)
 	if err != nil {
 		return fmt.Errorf("failed to generate DSN: %w", err)
 	}
@@ -120,7 +156,7 @@ func Load(ctx context.Context, fixturesFS fs.FS) error {
 	sqldb.ConfigureDefaultPool(db)
 	dbClient := sqldb.NewDBClient(db)
 
-	loader, err := New(dbClient)
+	loader, err := New(dbClient, opts...)
 	if err != nil {
 		return err
 	}

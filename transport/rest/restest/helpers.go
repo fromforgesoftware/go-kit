@@ -129,6 +129,19 @@ func AssertGetResponseOK() HandlerTestOpt {
 	return AssertResponseStatus(http.StatusOK)
 }
 
+// AssertResponse registers a custom response assertion — the extension point
+// for project-specific checks (normalized golden comparison, post-call
+// DB-state verification, ...). Assertions run in registration order.
+func AssertResponse(f func(t *testing.T, res *http.Response)) HandlerTestOpt {
+	return responseValidators(
+		func(t *testing.T, _ *HandlerSuite, res *http.Response) {
+			t.Helper()
+
+			f(t, res)
+		},
+	)
+}
+
 func AssertResMatchingFile(fileDir, fileName string, updateGoldenFile bool) HandlerTestOpt {
 	return responseValidators(
 		func(t *testing.T, s *HandlerSuite, res *http.Response) {

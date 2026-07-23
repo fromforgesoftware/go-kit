@@ -54,7 +54,7 @@ func ParallelSteps[T any](mergeStep ResultMerger[T], steps ...StepRunner[T]) Ste
 			})
 		}
 
-		reqs := make([]T, len(steps))
+		reqs := make([]T, 0, len(steps))
 		errs.Go(func() error {
 			for elem := range out {
 				reqs = append(reqs, elem)

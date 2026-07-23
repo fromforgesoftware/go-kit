@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"crypto/rsa"
+	"strings"
 	"testing"
 	"time"
 
@@ -115,13 +116,16 @@ func TestHMACValidate_TamperedSignature(t *testing.T) {
 	token, err := iss.Issue(context.Background(), uuid.New(), "erin")
 	require.NoError(t, err)
 
-	// Flip the last character of the signature segment.
-	tampered := token[:len(token)-1]
-	if token[len(token)-1] == 'a' {
-		tampered += "b"
-	} else {
-		tampered += "a"
+	// Flip the first character of the signature segment. (Flipping the LAST
+	// base64url char is flaky: a 32-byte HMAC signature is 43 chars, so the
+	// final char's low bits are unused padding and some swaps decode to the
+	// same signature.)
+	sigStart := strings.LastIndexByte(token, '.') + 1
+	flip := byte('a')
+	if token[sigStart] == 'a' {
+		flip = 'b'
 	}
+	tampered := token[:sigStart] + string(flip) + token[sigStart+1:]
 
 	claims, err := iss.Validate(context.Background(), tampered)
 	require.Error(t, err)

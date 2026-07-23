@@ -1,6 +1,8 @@
-//go:build integration
-// +build integration
-
+// Package gormdbtest boots a real gnomock Postgres with the service's
+// migrations applied. Untagged on purpose: gnomock DB tests run in the
+// default suite; the integration build tag is reserved for suites that
+// hit rate-limited third parties. GetDB skips the test when Docker is
+// unavailable.
 package gormdbtest
 
 import (
@@ -101,19 +103,20 @@ func GetDB(t *testing.T, schema SchemaName, opts ...TestDBConfigOption) *testDB 
 func createPGSQLContainer(t *testing.T, schema SchemaName, cfg *testDBConfig) *testDB {
 	t.Helper()
 
-	extensionSetup := `CREATE EXTENSION IF NOT EXISTS "uuid-ossp";`
+	// Migration files are read here and passed as ordered WithQueries
+	// strings: gnomock PREPENDS each WithQueriesFile to its query list,
+	// which reverses multi-file execution order.
+	queries := []string{`CREATE EXTENSION IF NOT EXISTS "uuid-ossp";`}
+	if cfg.migrationFolderPath != "" {
+		queries = append(queries, getMigrationQueries(t, schema, cfg.schemaMigrationFolderPath, cfg.migrationFolderPath)...)
+	}
 
 	options := []gnomockpostgres.Option{
-		gnomockpostgres.WithQueries(extensionSetup), // Runs before migrations
+		gnomockpostgres.WithQueries(queries...),
 		gnomockpostgres.WithUser(testDBUser, testDBPassword),
 		gnomockpostgres.WithDatabase(testDBName),
 		gnomockpostgres.WithVersion("14.6-alpine"),
 		gnomockpostgres.WithTimezone(time.UTC.String()),
-	}
-
-	if cfg.migrationFolderPath != "" {
-		migrationOpts := getMigrationsOptions(t, schema, cfg.schemaMigrationFolderPath, cfg.migrationFolderPath)
-		options = append(options, migrationOpts...)
 	}
 
 	p := gnomockpostgres.Preset(options...)
@@ -156,25 +159,20 @@ func createPGSQLContainer(t *testing.T, schema SchemaName, cfg *testDBConfig) *t
 	}
 }
 
-func getMigrationsOptions(t *testing.T, schema SchemaName, schemaMigrationFolderPath, migrationFolderPath string) []gnomockpostgres.Option {
+func getMigrationQueries(t *testing.T, schema SchemaName, schemaMigrationFolderPath, migrationFolderPath string) []string {
 	t.Helper()
 
-	opts := []gnomockpostgres.Option{}
+	files := []string{}
 
 	// 1. Pre-migrations
 	preMigrationPath := filepath.Join(migrationFolderPath, "common-pre-migration", "*.sql")
 	preMatches, _ := filepath.Glob(preMigrationPath)
 	sort.Strings(preMatches)
-	for _, m := range preMatches {
-		t.Logf("Adding pre-migration: %s", filepath.Base(m))
-		opts = append(opts, gnomockpostgres.WithQueriesFile(m))
-	}
+	files = append(files, preMatches...)
 
 	// 2. Schema creation
 	if schemaMigrationFolderPath != "" {
-		schemaFile := filepath.Join(schemaMigrationFolderPath, fmt.Sprintf("%s.sql", schema.String()))
-		t.Logf("Adding schema file: %s", schemaFile)
-		opts = append(opts, gnomockpostgres.WithQueriesFile(schemaFile))
+		files = append(files, filepath.Join(schemaMigrationFolderPath, fmt.Sprintf("%s.sql", schema.String())))
 	}
 
 	// 3. Main migrations
@@ -185,20 +183,25 @@ func getMigrationsOptions(t *testing.T, schema SchemaName, schemaMigrationFolder
 		if strings.Contains(m, "analytics") {
 			continue
 		}
-		t.Logf("Adding migration: %s", filepath.Base(m))
-		opts = append(opts, gnomockpostgres.WithQueriesFile(m))
+		files = append(files, m)
 	}
 
 	// 4. Post-migrations
 	postMigrationPath := filepath.Join(migrationFolderPath, "common-post-migration", "*.sql")
 	postMatches, _ := filepath.Glob(postMigrationPath)
 	sort.Strings(postMatches)
-	for _, m := range postMatches {
-		t.Logf("Adding post-migration: %s", filepath.Base(m))
-		opts = append(opts, gnomockpostgres.WithQueriesFile(m))
-	}
+	files = append(files, postMatches...)
 
-	return opts
+	queries := make([]string, 0, len(files))
+	for _, f := range files {
+		t.Logf("Adding migration queries: %s", f)
+		content, err := os.ReadFile(f) //nolint:gosec // test helper reading caller-supplied migration paths
+		if err != nil {
+			t.Fatalf("read migration file %s: %v", f, err)
+		}
+		queries = append(queries, string(content))
+	}
+	return queries
 }
 
 func getSchemaMigrationFolder() string {
