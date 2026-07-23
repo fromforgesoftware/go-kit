@@ -19,6 +19,12 @@ type MarshalOptions struct {
 	// If non-empty, only the relationships specified will be included.
 	// Supports dot notation for nested relationships (e.g., "author.comments")
 	IncludeRelations []string
+
+	// Meta, when set, is written as the top-level (document) meta member. It is
+	// supplied at serialize time rather than derived from the model, so the DTO
+	// stays a pure resource shape and the meta appears once, at the document
+	// root only (unlike Metable, which also stamps the resource object).
+	Meta *Meta
 }
 
 // MarshalOption is a function that modifies MarshalOptions
@@ -28,6 +34,13 @@ type MarshalOption func(*MarshalOptions)
 func WithInclude(relations ...string) MarshalOption {
 	return func(o *MarshalOptions) {
 		o.IncludeRelations = relations
+	}
+}
+
+// WithMeta sets the top-level document meta member at serialize time.
+func WithMeta(m *Meta) MarshalOption {
+	return func(o *MarshalOptions) {
+		o.Meta = m
 	}
 }
 
@@ -132,6 +145,10 @@ func Marshal[T any](model T, opts ...MarshalOption) (Payloader, error) {
 
 	if metableModels, ok := val.Interface().(Metable); ok {
 		payload.Meta = metableModels.JSONAPIMeta()
+	}
+
+	if options.Meta != nil {
+		payload.Meta = options.Meta
 	}
 
 	return payload, nil

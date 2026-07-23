@@ -175,6 +175,13 @@ func NewJsonApiDeleteHandler(
 	)
 }
 
+// ResponseMetable lets an endpoint result contribute the top-level (document)
+// meta member at serialize time. Optional: a result that does not implement it
+// yields no meta. Map-based so producers need not depend on the jsonapi type.
+type ResponseMetable interface {
+	ResponseMeta() map[string]any
+}
+
 func jsonApiEncoder[I, O any](
 	itemMapper func(in I) O,
 	successCode int,
@@ -182,7 +189,14 @@ func jsonApiEncoder[I, O any](
 	return NewHTTPEncoder(
 		func(ctx context.Context, w http.ResponseWriter, in I) error {
 			return writeBuffered(w, "application/vnd.api+json; charset=utf-8", successCode, func(buf io.Writer) error {
-				return jsonapi.MarshalPayload(buf, itemMapper(in), jsonapi.WithInclude(GetJSONAPIIncludes(ctx)...))
+				opts := []jsonapi.MarshalOption{jsonapi.WithInclude(GetJSONAPIIncludes(ctx)...)}
+				if mp, ok := any(in).(ResponseMetable); ok {
+					if m := mp.ResponseMeta(); m != nil {
+						meta := jsonapi.Meta(m)
+						opts = append(opts, jsonapi.WithMeta(&meta))
+					}
+				}
+				return jsonapi.MarshalPayload(buf, itemMapper(in), opts...)
 			})
 		},
 	)

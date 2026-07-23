@@ -2,6 +2,7 @@ package jsonapi_test
 
 import (
 	"bytes"
+	"encoding/json"
 	"os"
 	"testing"
 
@@ -10,6 +11,27 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+func TestMarshalPayload_WithMeta(t *testing.T) {
+	article := articlesToDTO(generateArticles(1)...)[0]
+
+	var buf bytes.Buffer
+	meta := jsonapi.Meta{"valid": true, "count": float64(1)}
+	require.NoError(t, jsonapi.MarshalPayload(&buf, article, jsonapi.WithMeta(&meta)))
+
+	var doc struct {
+		Data struct {
+			Meta map[string]any `json:"meta"`
+		} `json:"data"`
+		Meta map[string]any `json:"meta"`
+	}
+	require.NoError(t, json.Unmarshal(buf.Bytes(), &doc))
+
+	assert.Equal(t, true, doc.Meta["valid"], "document-level meta must be set")
+	assert.Equal(t, float64(1), doc.Meta["count"])
+	_, leaked := doc.Data.Meta["valid"]
+	assert.False(t, leaked, "WithMeta must land at the document root only, not on the resource")
+}
 
 func TestMarshalPayload(t *testing.T) {
 	// Create article using constructor with sample article
