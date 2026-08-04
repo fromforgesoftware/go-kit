@@ -18,12 +18,21 @@ import (
 	"github.com/fromforgesoftware/go-kit/monitoring/tracer"
 )
 
+// SplitterFactory builds a bufio.SplitFunc for a single connection. Use it
+// when framing depends on per-connection state — a stream cipher over the
+// packet header, a negotiated frame size — which a shared SplitFunc cannot
+// hold. It is called once per accepted connection, before the read loop
+// starts, so the returned closure owns its state exclusively.
+type SplitterFactory func(Session) bufio.SplitFunc
+
 // Server represents a TCP server
 type Server struct {
-	address        string
-	monitor        monitoring.Monitor
-	handler        Handler
-	packetSplitter bufio.SplitFunc
+	address           string
+	monitor           monitoring.Monitor
+	handler           Handler
+	packetSplitter    bufio.SplitFunc
+	splitterFactory   SplitterFactory
+	splitterOwnsToken bool
 
 	readTimeout     time.Duration
 	writeTimeout    time.Duration
@@ -51,19 +60,21 @@ type Server struct {
 }
 
 type serverConfig struct {
-	packetSplitter  bufio.SplitFunc
-	readBufferSize  int
-	writeBufferSize int
-	readTimeout     time.Duration
-	writeTimeout    time.Duration
-	maxConnections  int
-	sendPolicy      SendOverflowPolicy
-	onConnect       func(Session)
-	onDisconnect    func(Session)
-	address         string
-	handler         Handler
-	controllers     []Controller
-	middlewares     []Middleware
+	packetSplitter    bufio.SplitFunc
+	splitterFactory   SplitterFactory
+	splitterOwnsToken bool
+	readBufferSize    int
+	writeBufferSize   int
+	readTimeout       time.Duration
+	writeTimeout      time.Duration
+	maxConnections    int
+	sendPolicy        SendOverflowPolicy
+	onConnect         func(Session)
+	onDisconnect      func(Session)
+	address           string
+	handler           Handler
+	controllers       []Controller
+	middlewares       []Middleware
 }
 
 // serverOption allows configuring the server
@@ -83,6 +94,25 @@ func defaultServerOpts() []serverOption {
 func WithPacketSplitter(splitter bufio.SplitFunc) serverOption {
 	return func(s *serverConfig) {
 		s.packetSplitter = splitter
+	}
+}
+
+// WithPacketSplitterFactory installs a per-connection splitter. It takes
+// precedence over WithPacketSplitter, which cannot express framing that
+// depends on connection state.
+func WithPacketSplitterFactory(f SplitterFactory) serverOption {
+	return func(s *serverConfig) {
+		s.splitterFactory = f
+	}
+}
+
+// WithSplitterOwnedTokens declares that the splitter returns tokens backed by
+// memory it allocated itself rather than by the scanner's reusable buffer, so
+// the server can hand them to the handler without copying. Setting this for a
+// splitter that returns sub-slices of its input corrupts packets under load.
+func WithSplitterOwnedTokens() serverOption {
+	return func(s *serverConfig) {
+		s.splitterOwnsToken = true
 	}
 }
 
@@ -193,22 +223,24 @@ func NewServer(monitor monitoring.Monitor, opts ...serverOption) (*Server, error
 	}
 
 	s := &Server{
-		monitor:         monitor,
-		sessions:        make(map[uuid.UUID]*session),
-		shutdown:        make(chan struct{}),
-		packetSplitter:  cfg.packetSplitter,
-		readBufferSize:  cfg.readBufferSize,
-		writeBufferSize: cfg.writeBufferSize,
-		readTimeout:     cfg.readTimeout,
-		writeTimeout:    cfg.writeTimeout,
-		maxConnections:  cfg.maxConnections,
-		sendPolicy:      cfg.sendPolicy,
-		onConnect:       cfg.onConnect,
-		onDisconnect:    cfg.onDisconnect,
-		address:         cfg.address,
-		handler:         cfg.handler,
-		controllers:     cfg.controllers,
-		middlewares:     cfg.middlewares,
+		monitor:           monitor,
+		sessions:          make(map[uuid.UUID]*session),
+		shutdown:          make(chan struct{}),
+		packetSplitter:    cfg.packetSplitter,
+		splitterFactory:   cfg.splitterFactory,
+		splitterOwnsToken: cfg.splitterOwnsToken,
+		readBufferSize:    cfg.readBufferSize,
+		writeBufferSize:   cfg.writeBufferSize,
+		readTimeout:       cfg.readTimeout,
+		writeTimeout:      cfg.writeTimeout,
+		maxConnections:    cfg.maxConnections,
+		sendPolicy:        cfg.sendPolicy,
+		onConnect:         cfg.onConnect,
+		onDisconnect:      cfg.onDisconnect,
+		address:           cfg.address,
+		handler:           cfg.handler,
+		controllers:       cfg.controllers,
+		middlewares:       cfg.middlewares,
 	}
 
 	// sync.Pool stores pointers — passing the slice value directly causes
@@ -387,9 +419,17 @@ func (s *Server) handleConn(conn net.Conn) {
 	defer s.readPool.Put(bufPtr)
 	buf := *bufPtr
 
+	// A factory-built splitter owns state for this connection alone; the
+	// shared splitter is the fallback. Built before the first Scan so the
+	// closure is in place for the very first packet.
+	splitter := s.packetSplitter
+	if s.splitterFactory != nil {
+		splitter = s.splitterFactory(session)
+	}
+
 	scanner := bufio.NewScanner(conn)
 	scanner.Buffer(buf, bufio.MaxScanTokenSize)
-	scanner.Split(s.packetSplitter)
+	scanner.Split(splitter)
 
 	for {
 		if s.readTimeout > 0 {
@@ -406,10 +446,14 @@ func (s *Server) handleConn(conn net.Conn) {
 		}
 
 		// Handle packet
-		packet := scanner.Bytes()
-		// We must copy the packet because scanner reuses the buffer
-		payload := make([]byte, len(packet))
-		copy(payload, packet)
+		payload := scanner.Bytes()
+		if !s.splitterOwnsToken {
+			// The scanner reuses its buffer, so the token is only valid until
+			// the next Scan — copy unless the splitter allocated it.
+			cp := make([]byte, len(payload))
+			copy(cp, payload)
+			payload = cp
+		}
 
 		s.dispatchPacket(session, payload)
 	}

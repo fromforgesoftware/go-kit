@@ -25,6 +25,19 @@
 //	}
 //	server.Start()
 //
+// When framing depends on per-connection state — a stream cipher over the
+// packet header, a negotiated frame size — a shared splitter cannot hold it.
+// Build one per connection instead:
+//
+//	server, err := tcp.NewServer(monitor,
+//	    tcp.WithAddress(":8085"),
+//	    tcp.WithHandler(handler),
+//	    tcp.WithPacketSplitterFactory(func(sess tcp.Session) bufio.SplitFunc {
+//	        return newFrameSplitter(sess).Split
+//	    }),
+//	    tcp.WithSplitterOwnedTokens(), // splitter allocates its tokens
+//	)
+//
 // With controllers and middleware:
 //
 //	server, err := tcp.NewServer(monitor,
