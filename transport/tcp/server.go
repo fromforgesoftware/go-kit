@@ -326,6 +326,19 @@ func (s *Server) Stop() error {
 	if listener != nil {
 		listener.Close()
 	}
+
+	// Close the live sessions before waiting: a connection with nothing to say
+	// is blocked in Scan, and nothing but its socket closing will wake it.
+	s.mu.RLock()
+	live := make([]*session, 0, len(s.sessions))
+	for _, sess := range s.sessions {
+		live = append(live, sess)
+	}
+	s.mu.RUnlock()
+	for _, sess := range live {
+		sess.Close()
+	}
+
 	s.wg.Wait()
 	return nil
 }
@@ -380,11 +393,18 @@ func (s *Server) acceptLoop() {
 			continue
 		}
 
+		// Registered on the WaitGroup so Stop waits for the connection to
+		// finish dispatching. Without it Stop returns while handlers are still
+		// running, and a caller that tears down what a handler is using — a
+		// test's mock, a repository — races it.
+		s.wg.Add(1)
 		go s.handleConn(conn)
 	}
 }
 
 func (s *Server) handleConn(conn net.Conn) {
+	defer s.wg.Done()
+
 	s.connCnt.Add(1)
 	defer s.connCnt.Add(-1)
 
