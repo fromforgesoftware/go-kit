@@ -18,7 +18,7 @@ type TestingT interface {
 // returns sensible zero values. Use it in unit tests where you don't care
 // about tracing assertions.
 func NewStubTracer(t TestingT) tracer.Tracer {
-	tr := NewTracer(t)
+	tr := newUnassertedTracer(t)
 
 	tr.EXPECT().Extract(mock.Anything, mock.Anything).
 		RunAndReturn(func(ctx context.Context, _ tracer.Carrier) context.Context { return ctx }).Maybe()
@@ -44,8 +44,15 @@ func NewStubTracer(t TestingT) tracer.Tracer {
 }
 
 // NewStubSpan returns a permissive mock Span that accepts any call.
+//
+// It deliberately does not assert its expectations at cleanup. Every one of
+// them is optional, so asserting adds nothing — but a stub span is built inside
+// Start, which means one can be created by a goroutine that is still finishing
+// as the test tears down. Registering an assertion then fails whichever test
+// happens to own the stack, and the report names neither the goroutine nor the
+// span. A permissive stub must not be able to fail a test.
 func NewStubSpan(t TestingT) tracer.Span {
-	sp := NewSpan(t)
+	sp := newUnassertedSpan(t)
 
 	sp.EXPECT().End().Maybe()
 	sp.EXPECT().IsRecording().Return(false).Maybe()
@@ -61,4 +68,19 @@ func NewStubSpan(t TestingT) tracer.Span {
 	}
 
 	return sp
+}
+
+// newUnassertedSpan is NewSpan without the cleanup assertion. See NewStubSpan.
+func newUnassertedSpan(t TestingT) *Span {
+	m := &Span{}
+	m.Mock.Test(t)
+	return m
+}
+
+// newUnassertedTracer is NewTracer without the cleanup assertion: it hands out
+// stub spans, so it carries the same hazard.
+func newUnassertedTracer(t TestingT) *Tracer {
+	m := &Tracer{}
+	m.Mock.Test(t)
+	return m
 }
