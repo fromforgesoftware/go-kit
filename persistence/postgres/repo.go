@@ -21,6 +21,8 @@ import (
 	"github.com/fromforgesoftware/go-kit/slicesx"
 )
 
+const sqliteDialect = "sqlite"
+
 type Repo struct {
 	DB      *gormdb.DBClient
 	fMapper map[string]string
@@ -108,7 +110,7 @@ func (r *Repo) queryApply(ctx context.Context, q query.Query, tableName string, 
 	if p := q.Pagination(); p != nil {
 		tx = r.paginationApply(tx, p)
 	}
-	if s.lock != nil {
+	if s.lock != nil && r.DB.Dialector.Name() != sqliteDialect {
 		tx = tx.Clauses(s.lock)
 	}
 
