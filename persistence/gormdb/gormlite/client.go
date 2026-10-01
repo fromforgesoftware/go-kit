@@ -29,6 +29,7 @@ func DSN(path string) string {
 	q.Add("_pragma", "foreign_keys(ON)")
 	q.Add("_pragma", "busy_timeout("+strconv.FormatInt(busyTimeout.Milliseconds(), 10)+")")
 	q.Set("_time_format", "sqlite")
+	q.Set("_txlock", "immediate")
 	return "file:" + path + "?" + q.Encode()
 }
 
