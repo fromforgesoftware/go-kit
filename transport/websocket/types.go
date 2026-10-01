@@ -76,13 +76,14 @@ func (t TopicType) String() string {
 }
 
 const (
-	MessageTypeWelcome   MessageType = "welcome"
-	MessageTypePing      MessageType = "ping"
-	MessageTypePong      MessageType = "pong"
-	MessageTypeAck       MessageType = "ack"
-	MessageTypeError     MessageType = "error"
-	MessageTypeMessage   MessageType = "message"
-	MessageTypeSubscribe MessageType = "subscribe"
+	MessageTypeWelcome     MessageType = "welcome"
+	MessageTypePing        MessageType = "ping"
+	MessageTypePong        MessageType = "pong"
+	MessageTypeAck         MessageType = "ack"
+	MessageTypeError       MessageType = "error"
+	MessageTypeMessage     MessageType = "message"
+	MessageTypeSubscribe   MessageType = "subscribe"
+	MessageTypeUnsubscribe MessageType = "unsubscribe"
 )
 
 // Message represents a message between the WebSocket client and server
