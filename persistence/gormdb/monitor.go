@@ -2,7 +2,6 @@ package gormdb
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"os"
 	"time"
@@ -157,24 +156,34 @@ func SlowQueriesThreshold(slowQueryThreshold time.Duration) MonitorOption {
 	}
 }
 
+// WithLogLevel sets how much SQL the monitor logs. It overrides DB_LOG_LEVEL.
+func WithLogLevel(level logger.LogLevel) MonitorOption {
+	return func(c *monitorConfig) {
+		c.logLevel = gormLogLevel(level)
+	}
+}
+
 func withLogLevelFromEnv() MonitorOption {
 	return func(c *monitorConfig) {
-		var logLevel gormlogger.LogLevel
 		dbLogLevel := os.Getenv("DB_LOG_LEVEL")
-		if len(dbLogLevel) < 1 {
-			panic(errors.New("config.DB_LOG_LEVEL cannot be empty"))
+		if dbLogLevel == "" {
+			c.logLevel = gormlogger.Warn
+			return
 		}
-		dbLoggerLevel := logger.ParseLevel(dbLogLevel)
-		switch dbLoggerLevel {
-		case logger.LogLevelError, logger.LogLevelCritical:
-			logLevel = gormlogger.Error
-		case logger.LogLevelWarn:
-			logLevel = gormlogger.Warn
-		case logger.LogLevelInfo, logger.LogLevelDebug:
-			logLevel = gormlogger.Info
-		}
+		c.logLevel = gormLogLevel(logger.ParseLevel(dbLogLevel))
+	}
+}
 
-		c.logLevel = logLevel
+func gormLogLevel(level logger.LogLevel) gormlogger.LogLevel {
+	switch level {
+	case logger.LogLevelError, logger.LogLevelCritical:
+		return gormlogger.Error
+	case logger.LogLevelWarn:
+		return gormlogger.Warn
+	case logger.LogLevelInfo, logger.LogLevelDebug:
+		return gormlogger.Info
+	default:
+		return gormlogger.Warn
 	}
 }
 

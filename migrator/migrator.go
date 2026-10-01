@@ -11,6 +11,8 @@ import (
 
 	"github.com/golang-migrate/migrate/v4"
 	_ "github.com/golang-migrate/migrate/v4/database/postgres"
+	"github.com/golang-migrate/migrate/v4/database/sqlite"
+	"github.com/golang-migrate/migrate/v4/source"
 	"github.com/golang-migrate/migrate/v4/source/iofs"
 
 	"github.com/fromforgesoftware/go-kit/monitoring/logger"
@@ -22,6 +24,7 @@ type migrator struct {
 	db          *sqldb.DBClient
 	logger      logger.Logger
 	serviceName string
+	driver      sqldb.DriverType
 }
 
 // option configures a migrator.
@@ -41,11 +44,20 @@ func WithServiceName(name string) option {
 	}
 }
 
+// WithDriver selects the database the migrations run against. Postgres builds its own
+// connection from the environment; SQLite migrates the DBClient the migrator was given.
+func WithDriver(driver sqldb.DriverType) option {
+	return func(m *migrator) {
+		m.driver = driver
+	}
+}
+
 // defaultOptions returns the default options for a migrator.
 func defaultOptions() []option {
 	return []option{
 		WithLogger(logger.New()),
 		WithServiceName("default"),
+		WithDriver(sqldb.DriverTypePostgres),
 	}
 }
 
@@ -106,21 +118,17 @@ func (m *migrator) runMigrations(ctx context.Context, migrationsFS fs.FS) error 
 		return fmt.Errorf("failed to read migrations folder: %w", err)
 	}
 
-	// Build DSN with service-specific migration table
-	dsn, err := sqldb.NewDSN(sqldb.DriverTypePostgres)
-	if err != nil {
-		return fmt.Errorf("failed to create DSN: %w", err)
-	}
-
-	// Add migration table parameter
-	serviceDSN := fmt.Sprintf("%s&x-migrations-table=%s_schema_migrations", dsn, m.serviceName)
-
-	// Create migrate instance
-	migrator, err := migrate.NewWithSourceInstance("iofs", d, serviceDSN)
+	migrator, ownsConnection, err := m.newMigrate(d)
 	if err != nil {
 		return fmt.Errorf("failed to create migrate instance: %w", err)
 	}
 	defer func() {
+		if !ownsConnection {
+			if err := d.Close(); err != nil {
+				m.logger.WithKeysAndValues("source_err", err).Warn("⚠️  Failed to close migration source")
+			}
+			return
+		}
 		if srcErr, dbErr := migrator.Close(); srcErr != nil || dbErr != nil {
 			m.logger.WithKeysAndValues("source_err", srcErr, "db_err", dbErr).Warn("⚠️  Failed to close migrate instance")
 		}
@@ -153,6 +161,30 @@ func (m *migrator) runMigrations(ctx context.Context, migrationsFS fs.FS) error 
 
 	m.logger.Info("✅ Migrations applied successfully")
 	return nil
+}
+
+// newMigrate builds the migrate instance. ownsConnection reports whether closing it would close a
+// database handle the migrator opened itself; a handle the caller provided stays open.
+func (m *migrator) newMigrate(src source.Driver) (instance *migrate.Migrate, ownsConnection bool, err error) {
+	table := fmt.Sprintf("%s_schema_migrations", m.serviceName)
+	switch m.driver {
+	case sqldb.DriverTypeSQLite:
+		db, err := sqlite.WithInstance(m.db.DB(), &sqlite.Config{MigrationsTable: table})
+		if err != nil {
+			return nil, false, err
+		}
+		instance, err = migrate.NewWithInstance("iofs", src, string(sqldb.DriverTypeSQLite), db)
+		return instance, false, err
+	case sqldb.DriverTypePostgres:
+		dsn, err := sqldb.NewDSN(sqldb.DriverTypePostgres)
+		if err != nil {
+			return nil, false, fmt.Errorf("failed to create DSN: %w", err)
+		}
+		instance, err = migrate.NewWithSourceInstance("iofs", src, fmt.Sprintf("%s&x-migrations-table=%s", dsn, table))
+		return instance, true, err
+	default:
+		return nil, false, fmt.Errorf("unsupported migration driver %q", m.driver)
+	}
 }
 
 // executeScripts executes SQL scripts from a directory.

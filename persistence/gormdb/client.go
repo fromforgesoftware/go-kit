@@ -71,6 +71,16 @@ func WithSQLConnectionOptions(options ...sqldb.ConnectionOption) Option {
 	}
 }
 
+// WithoutDefaultConnectionOptions drops the connection options applied so far, so a backend that
+// cannot run the Postgres defaults (the search_path statement) starts from none.
+func WithoutDefaultConnectionOptions() Option {
+	return func(c *config) error {
+		c.connectionOptions = nil
+
+		return nil
+	}
+}
+
 func newConfig(options ...Option) (*config, error) {
 	c := &config{
 		gConfig:           new(gorm.Config),
