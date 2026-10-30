@@ -14,9 +14,14 @@ versioned + published independently. This is the BASE module — no forge deps.
 Go 1.25 · gRPC + JSON:API · GORM/Postgres + Redis · OpenTelemetry · buf.
 
 ## Capabilities (packages)
-transport (rest/grpc/ws/amqp/nats) · persistence (postgres/gormdb/redisdb) ·
-auth (jwt/oidc/password) · jsonapi · resource · search · monitoring (logger/tracer) ·
-errors · proto (generated under `proto/`).
+application (repository/usecase) · resource · errors · filter · search ·
+transport (rest/grpc/websocket/tcp/udp/amqp/nats) · jsonapi · openapi ·
+persistence (postgres/gormdb/sqldb/redisdb) · migrator ·
+auth (jwt/oidc/password/provider) · firebase · monitoring (logger/tracer) ·
+decimal · retry · saga · instance · ptr · slicesx · golden · fixtures · sops ·
+proto (generated under `proto/`) · pb. See README.md for one line per package.
+
+Only add a package when a consumer needs it now — no speculative packages.
 
 ## Conventions
 - Commits: `<type>(<scope>): <subject>` — one line, ≤72 chars, lowercase, no
