@@ -15,9 +15,8 @@ Go 1.25 · gRPC + JSON:API · GORM/Postgres + Redis · OpenTelemetry · buf.
 
 ## Capabilities (packages)
 transport (rest/grpc/ws/amqp/nats) · persistence (postgres/gormdb/redisdb) ·
-auth (jwt/oidc/password) · jsonapi · resource · search · audit (Event + Sink port) ·
-outbox · monitoring (logger/tracer) · app (fx bootstrap) · errors · validation ·
-config · ratelimit · idempotency · proto (generated under `proto/`).
+auth (jwt/oidc/password) · jsonapi · resource · search · monitoring (logger/tracer) ·
+errors · proto (generated under `proto/`).
 
 ## Conventions
 - Commits: `<type>(<scope>): <subject>` — one line, ≤72 chars, lowercase, no

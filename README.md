@@ -1,7 +1,7 @@
 # go-kit
 
 Forge's shared Go platform library: transport (REST/gRPC/JSON:API), persistence,
-auth, audit, monitoring, search, outbox, and related building blocks.
+auth, monitoring, search, and related building blocks.
 
 ```sh
 go get github.com/fromforgesoftware/go-kit@latest
